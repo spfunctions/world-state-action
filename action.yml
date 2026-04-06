@@ -7,59 +7,29 @@ branding:
   color: 'green'
 
 inputs:
-  focus:
-    description: 'Comma-separated topics to focus on (geopolitics, economy, energy, elections, crypto, tech)'
-    required: false
-    default: ''
   format:
-    description: 'Output format: markdown or json'
-    required: false
+    description: 'Output format: json or markdown'
     default: 'markdown'
-  delta:
-    description: 'Get incremental update instead of full state. Value: 1h, 6h, 24h'
+  endpoint:
+    description: 'Which endpoint: world, index, delta'
+    default: 'world'
+  since:
+    description: 'For delta endpoint: time window (1h, 6h, 24h)'
+    default: '1h'
+  threshold:
+    description: 'Uncertainty threshold for gate mode (0-100). Action fails if uncertainty exceeds this.'
     required: false
-    default: ''
 
 outputs:
   world_state:
-    description: 'The world state content'
-    value: ${{ steps.fetch.outputs.state }}
+    description: 'The world state data'
   uncertainty:
-    description: 'SF Index: uncertainty score (0-100)'
-    value: ${{ steps.index.outputs.uncertainty }}
+    description: 'Current uncertainty index (0-100)'
   geopolitical:
-    description: 'SF Index: geopolitical risk score (0-100)'
-    value: ${{ steps.index.outputs.geopolitical }}
+    description: 'Current geopolitical risk (0-100)'
   momentum:
-    description: 'SF Index: directional momentum (-1 to +1)'
-    value: ${{ steps.index.outputs.momentum }}
+    description: 'Current momentum (-1 to +1)'
 
 runs:
-  using: 'composite'
-  steps:
-    - name: Fetch world state
-      id: fetch
-      shell: bash
-      run: |
-        URL="https://simplefunctions.dev/api/agent/world"
-        PARAMS="?format=${{ inputs.format }}"
-        if [ -n "${{ inputs.focus }}" ]; then
-          PARAMS="${PARAMS}&focus=${{ inputs.focus }}"
-        fi
-        if [ -n "${{ inputs.delta }}" ]; then
-          URL="https://simplefunctions.dev/api/agent/world/delta"
-          PARAMS="${PARAMS}&since=${{ inputs.delta }}"
-        fi
-        STATE=$(curl -sf "${URL}${PARAMS}")
-        echo "state<<SFEOF" >> $GITHUB_OUTPUT
-        echo "$STATE" >> $GITHUB_OUTPUT
-        echo "SFEOF" >> $GITHUB_OUTPUT
-
-    - name: Fetch SF Index
-      id: index
-      shell: bash
-      run: |
-        IDX=$(curl -sf "https://simplefunctions.dev/api/public/index")
-        echo "uncertainty=$(echo "$IDX" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('index',{}).get('uncertainty',''))" 2>/dev/null || echo "")" >> $GITHUB_OUTPUT
-        echo "geopolitical=$(echo "$IDX" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('index',{}).get('geopolitical',''))" 2>/dev/null || echo "")" >> $GITHUB_OUTPUT
-        echo "momentum=$(echo "$IDX" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('index',{}).get('momentum',''))" 2>/dev/null || echo "")" >> $GITHUB_OUTPUT
+  using: 'node20'
+  main: 'dist/index.js'
