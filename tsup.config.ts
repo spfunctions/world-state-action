@@ -1,11 +1,2 @@
-import { defineConfig } from 'tsup';
-
-export default defineConfig({
-  entry: ['src/index.ts'],
-  format: ['cjs'],
-  splitting: false,
-  clean: true,
-  target: 'node20',
-  platform: 'node',
-  noExternal: [/.*/],
-});
+import { defineConfig } from 'tsup'
+export default defineConfig({ entry: ['src/index.ts'], format: ['esm'], platform: 'node', target: 'node20', clean: true, noExternal: [/(.*)/] })

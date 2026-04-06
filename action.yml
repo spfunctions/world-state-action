@@ -1,35 +1,30 @@
-name: 'SimpleFunctions World State'
-description: 'Inject real-time prediction market world state into your CI/CD workflow. Probabilities from 9,706 markets (Kalshi + Polymarket).'
-author: 'SimpleFunctions'
-
+name: 'Prediction Market World State'
+description: 'Inject real-time prediction market world state into your CI/CD workflows. Powered by SimpleFunctions.'
 branding:
   icon: 'globe'
-  color: 'green'
-
+  color: 'blue'
 inputs:
-  format:
-    description: 'Output format: json or markdown'
-    default: 'markdown'
   endpoint:
     description: 'Which endpoint: world, index, delta'
     default: 'world'
+  format:
+    description: 'Output format: json or markdown'
+    default: 'markdown'
   since:
     description: 'For delta endpoint: time window (1h, 6h, 24h)'
     default: '1h'
   threshold:
-    description: 'Uncertainty threshold for gate mode (0-100). Action fails if uncertainty exceeds this.'
+    description: 'Uncertainty threshold for gate mode (0-100). Fails if exceeded.'
     required: false
-
 outputs:
   world_state:
     description: 'The world state data'
   uncertainty:
-    description: 'Current uncertainty index (0-100)'
+    description: 'Current uncertainty (0-100)'
   geopolitical:
     description: 'Current geopolitical risk (0-100)'
   momentum:
     description: 'Current momentum (-1 to +1)'
-
 runs:
   using: 'node20'
   main: 'dist/index.js'
