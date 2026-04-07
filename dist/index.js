@@ -8,6 +8,10 @@ var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __commonJS = (cb, mod) => function __require() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
@@ -24,6 +28,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // node_modules/@actions/core/lib/utils.js
 var require_utils = __commonJS({
@@ -19744,10 +19749,10 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
       (0, command_1.issueCommand)("error", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
     exports2.error = error;
-    function warning(message, properties = {}) {
+    function warning2(message, properties = {}) {
       (0, command_1.issueCommand)("warning", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
-    exports2.warning = warning;
+    exports2.warning = warning2;
     function notice(message, properties = {}) {
       (0, command_1.issueCommand)("notice", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
@@ -19818,48 +19823,90 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
 });
 
 // src/index.ts
+var index_exports = {};
+__export(index_exports, {
+  run: () => run
+});
+module.exports = __toCommonJS(index_exports);
 var core = __toESM(require_core());
 var BASE = "https://simplefunctions.dev";
+async function sfFetch(path, params = {}) {
+  const url = new URL(path, BASE);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  const res = await fetch(url.toString());
+  if (!res.ok) {
+    throw new Error(`SimpleFunctions API error ${res.status} for ${url.pathname}`);
+  }
+  const ct = res.headers.get("content-type") || "";
+  const text = await res.text();
+  let json = null;
+  if (ct.includes("json")) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+    }
+  }
+  return { text, json };
+}
+function setIndexOutputs(idx) {
+  if (idx.uncertainty != null) core.setOutput("uncertainty", String(idx.uncertainty));
+  if (idx.geopolitical != null) core.setOutput("geopolitical", String(idx.geopolitical));
+  if (idx.momentum != null) core.setOutput("momentum", String(idx.momentum));
+}
 async function run() {
   try {
-    const endpoint = core.getInput("endpoint") || "world";
-    const format = core.getInput("format") || "markdown";
-    const since = core.getInput("since") || "1h";
-    const threshold = core.getInput("threshold");
-    let data;
+    const endpoint = (core.getInput("endpoint") || "world").trim();
+    const format = (core.getInput("format") || "markdown").trim();
+    const since = (core.getInput("since") || "1h").trim();
+    const thresholdRaw = core.getInput("threshold");
+    let uncertaintyForThreshold = null;
     if (endpoint === "index") {
-      const res = await fetch(`${BASE}/api/public/index`);
-      data = await res.json();
-      core.setOutput("uncertainty", String(data.uncertainty));
-      core.setOutput("geopolitical", String(data.geopolitical));
-      core.setOutput("momentum", String(data.momentum));
-      core.setOutput("world_state", JSON.stringify(data));
+      const { json } = await sfFetch("/api/public/index");
+      if (!json) throw new Error("Index endpoint did not return JSON");
+      core.setOutput("world_state", JSON.stringify(json));
+      setIndexOutputs(json);
+      uncertaintyForThreshold = typeof json.uncertainty === "number" ? json.uncertainty : null;
     } else if (endpoint === "delta") {
-      const res = await fetch(`${BASE}/api/agent/world/delta?since=${since}&format=${format}`);
-      data = format === "json" ? await res.json() : await res.text();
-      core.setOutput("world_state", typeof data === "string" ? data : JSON.stringify(data));
+      const { text, json } = await sfFetch("/api/agent/world/delta", { since, format });
+      core.setOutput("world_state", format === "json" && json ? JSON.stringify(json) : text);
+    } else if (endpoint === "world") {
+      const { text, json } = await sfFetch("/api/agent/world", { format });
+      core.setOutput("world_state", format === "json" && json ? JSON.stringify(json) : text);
+      if (format === "json" && json?.index) {
+        setIndexOutputs(json.index);
+        uncertaintyForThreshold = typeof json.index.uncertainty === "number" ? json.index.uncertainty : null;
+      }
     } else {
-      const res = await fetch(`${BASE}/api/agent/world?format=${format}`);
-      data = format === "json" ? await res.json() : await res.text();
-      core.setOutput("world_state", typeof data === "string" ? data : JSON.stringify(data));
-      if (format === "json" && data.index) {
-        core.setOutput("uncertainty", String(data.index.uncertainty));
-        core.setOutput("geopolitical", String(data.index.geopolitical));
-        core.setOutput("momentum", String(data.index.momentum));
+      throw new Error(`Unknown endpoint: ${endpoint}. Use 'world', 'index', or 'delta'.`);
+    }
+    if (thresholdRaw) {
+      const threshold = parseInt(thresholdRaw, 10);
+      if (Number.isNaN(threshold)) {
+        throw new Error(`Invalid threshold: '${thresholdRaw}' (expected integer 0-100)`);
+      }
+      if (uncertaintyForThreshold != null && uncertaintyForThreshold > threshold) {
+        core.setFailed(
+          `Uncertainty ${uncertaintyForThreshold} exceeds threshold ${threshold} \u2014 failing the workflow`
+        );
+        return;
+      }
+      if (uncertaintyForThreshold == null) {
+        core.warning(
+          `threshold was set but no uncertainty was returned for endpoint='${endpoint}' format='${format}'. Use endpoint='index' or endpoint='world' with format='json' to enable threshold gating.`
+        );
       }
     }
-    if (threshold) {
-      const u = endpoint === "index" ? data.uncertainty : data?.index?.uncertainty;
-      if (u != null && u > parseInt(threshold)) {
-        core.setFailed(`Uncertainty ${u} exceeds threshold ${threshold}`);
-      }
-    }
-    core.info(`World state fetched (${endpoint}, ${format})`);
+    core.info(`World state fetched (endpoint=${endpoint}, format=${format})`);
   } catch (err) {
-    core.setFailed(err.message);
+    core.setFailed(err?.message ?? String(err));
   }
 }
-run();
+var isMain = typeof process !== "undefined" && Array.isArray(process.argv) && /index\.(c?js|mjs)$/.test(process.argv[1] ?? "");
+if (isMain) run();
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  run
+});
 /*! Bundled license information:
 
 undici/lib/fetch/body.js:
